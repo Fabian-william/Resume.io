@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resume.io</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Libraries for Cropping and Word Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css">
+    <script src="https://unpkg.com/html-docx-js/dist/html-docx.js"></script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        .accordion-content { transition: max-height 0.5s ease-in-out, opacity 0.5s ease-in-out; max-height: 0; opacity: 0; overflow: hidden; }
+        .accordion-content.open { max-height: 2000px; opacity: 1; }
+        .accordion-chevron { transition: transform 0.3s ease-in-out; }
+        .accordion-chevron.rotate-180 { transform: rotate(180deg); }
+        .quick-select-btn { cursor: pointer; }
+        /* Cropper Modal Styles */
+        #cropper-modal { display: none; }
+        #cropper-modal.flex { display: flex; }
+        .cropper-container { max-width: 90vw; max-height: 80vh; }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <!-- Header -->
+    <header class="bg-white/80 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-20">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center py-3">
+            <h1 class="text-xl font-bold text-gray-900">Resume.io</h1>
+            <button id="export-word-btn" class="flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                <i data-lucide="file-text" class="mr-2 h-5 w-5"></i>
+                <span class="font-medium">Export to Word</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto p-4 sm:p-6 lg:p-8 grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        
+        <!-- Editor Panel -->
+        <div class="editor-panel space-y-4">
+            <!-- Sections will be dynamically added here -->
+        </div>
+
+        <!-- Preview Panel -->
+        <div class="preview-panel sticky top-24">
+            <div class="template-switcher bg-white p-2 rounded-xl border flex flex-wrap items-center justify-center gap-1 mb-4">
+                <button data-template="modern" class="template-btn px-3 py-2 text-sm font-medium rounded-lg capitalize">Modern</button>
+                <button data-template="corporate" class="template-btn px-3 py-2 text-sm font-medium rounded-lg capitalize">Corporate</button>
+                <button data-template="creative" class="template-btn px-3 py-2 text-sm font-medium rounded-lg capitalize">Creative</button>
+                <button data-template="technical" class="template-btn px-3 py-2 text-sm font-medium rounded-lg capitalize">Technical</button>
+                <button data-template="minimalist" class="template-btn px-3 py-2 text-sm font-medium rounded-lg capitalize">Minimalist</button>
+                <button data-template="executive" class="template-btn px-3 py-2 text-sm font-medium rounded-lg capitalize">Executive</button>
+                <button data-template="academic" class="template-btn px-3 py-2 text-sm font-medium rounded-lg capitalize">Academic CV</button>
+                <button data-template="bold" class="template-btn px-3 py-2 text-sm font-medium rounded-lg capitalize">Bold</button>
+            </div>
+            <div id="resume-preview-container" class="bg-white text-gray-800 p-8 rounded-xl shadow-lg min-h-full border">
+                <div id="resume-preview"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Cropper Modal -->
+    <div id="cropper-modal" class="fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
+        <div class="bg-white p-6 rounded-lg shadow-xl">
+            <div class="cropper-container mb-4">
+                <img id="image-to-crop" src="">
+            </div>
+            <div class="flex justify-end gap-4">
+                <button id="cancel-crop-btn" class="px-4 py-2 bg-gray-300 rounded-lg">Cancel</button>
+                <button id="crop-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg">Crop & Save</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- STATE MANAGEMENT ---
+            let resumeData = {
+                name: '', title: '', email: '', phone: '', website: '', linkedin: '', github: '', summary: '', photo: '',
+                experience: [], projects: [], education: [], certifications: [], awards: [], skills: '', languages: [],
+            };
+            let activeTemplate = 'modern';
+            let openAccordion = 'personal';
+            let cropper;
+
+            // --- EDITOR SECTIONS DEFINITION ---
+            const sections = [
+                { id: 'personal', title: 'Personal Information', icon: 'user', fields: [
+                    { id: 'name', placeholder: 'Full Name', icon: 'user' }, { id: 'title', placeholder: 'Professional Title', icon: 'briefcase' },
+                    { id: 'email', placeholder: 'Email Address', icon: 'mail', type: 'email' }, { id: 'phone', placeholder: 'Phone Number', icon: 'phone', type: 'tel' },
+                    { id: 'website', placeholder: 'Portfolio/Website URL', icon: 'globe', type: 'url' }, { id: 'linkedin', placeholder: 'LinkedIn Profile URL', icon: 'linkedin', type: 'url' },
+                    { id: 'github', placeholder: 'GitHub Profile URL', icon: 'github', type: 'url' },
+                    { id: 'photo', label: 'Profile Photo', type: 'file', accept: 'image/*' }
+                ]},
+                { id: 'summary', title: 'Professional Summary', icon: 'pen-square', fields: [{ id: 'summary', type: 'textarea', rows: 5, placeholder: 'A brief summary...' }] },
+                { id: 'experience', title: 'Work Experience', icon: 'briefcase', dynamic: true, template: [ { name: 'position', placeholder: 'Job Title' }, { name: 'company', placeholder: 'Company Name' }, { name: 'years', placeholder: 'e.g., 2020 - Present' }, { name: 'description', placeholder: 'Key responsibilities...', type: 'textarea', rows: 3 } ] },
+                { id: 'projects', title: 'Projects', icon: 'code-2', dynamic: true, template: [ { name: 'name', placeholder: 'Project Name' }, { name: 'link', placeholder: 'Project Link' }, { name: 'description', placeholder: 'Project description...', type: 'textarea', rows: 3 } ] },
+                { id: 'education', title: 'Education', icon: 'graduation-cap', dynamic: true, template: [ { name: 'degree', placeholder: 'Degree / Certificate' }, { name: 'institution', placeholder: 'Institution Name' }, { name: 'year', placeholder: 'Year of Completion' } ] },
+                { id: 'certifications', title: 'Certifications', icon: 'award', dynamic: true, template: [ { name: 'name', placeholder: 'Certification Name' }, { name: 'issuer', placeholder: 'Issuing Organization' }, { name: 'date', placeholder: 'Date (e.g., May 2025)' } ] },
+                { id: 'awards', title: 'Awards', icon: 'trophy', dynamic: true, template: [ { name: 'name', placeholder: 'Award Name' }, { name: 'awarder', placeholder: 'Awarded by' }, { name: 'date', placeholder: 'Date (e.g., 29.05.2023)' }, { name: 'summary', placeholder: 'Brief summary...', type: 'textarea', rows: 2 } ] },
+                { id: 'skills', title: 'Skills', icon: 'star', fields: [{ id: 'skills', type: 'textarea', rows: 4, placeholder: 'Enter skills separated by commas...' }], quickSelect: ['JavaScript', 'React', 'Node.js', 'Python', 'Java', 'C++', 'Go', 'Swift', 'SQL', 'MongoDB', 'Docker', 'Kubernetes', 'AWS', 'GCP', 'Terraform', 'Agile', 'Scrum', 'Communication', 'Teamwork', 'Leadership'] },
+                { id: 'languages', title: 'Languages', icon: 'languages', dynamic: true, template: [ { name: 'name', placeholder: 'e.g., Spanish' }, { name: 'proficiency', type: 'select', options: ['Basic', 'Conversational', 'Fluent', 'Native'] } ], quickSelect: ['English', 'Spanish', 'Mandarin', 'French', 'German', 'Hindi', 'Tamil', 'Telugu', 'Arabic', 'Russian', 'Portuguese'] }
+            ];
+
+            // --- DOM ELEMENTS ---
+            const editorPanel = document.querySelector('.editor-panel');
+            const previewPanel = document.getElementById('resume-preview');
+            const cropperModal = document.getElementById('cropper-modal');
+            const imageToCrop = document.getElementById('image-to-crop');
+
+            // --- BUILD EDITOR UI ---
+            function buildEditor() {
+                sections.forEach(section => {
+                    const accordionItem = document.createElement('div');
+                    accordionItem.className = 'accordion-item border rounded-xl overflow-hidden bg-white';
+                    
+                    let contentHTML = '';
+                    if (section.fields) {
+                        contentHTML += section.fields.map(field => {
+                            if (field.type === 'textarea') return `<textarea id="${field.id}" rows="${field.rows}" placeholder="${field.placeholder}" class="w-full p-3 border rounded-lg"></textarea>`;
+                            if (field.type === 'file') return `<div class="mt-4"><label for="${field.id}" class="block text-sm font-medium text-gray-700 mb-2">${field.label}</label><input type="${field.type}" id="${field.id}" accept="${field.accept}" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"></div>`;
+                            return `<div class="relative mb-4"><i data-lucide="${field.icon}" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5"></i><input type="${field.type || 'text'}" id="${field.id}" placeholder="${field.placeholder}" class="w-full py-2 pr-3 pl-10 border rounded-lg"></div>`;
+                        }).join('');
+                    }
+                    if (section.dynamic) {
+                        contentHTML += `<div id="${section.id}-list"></div><button id="add-${section.id}-btn" class="mt-2 flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"><i data-lucide="plus-circle" class="mr-2 h-5 w-5"></i><span>Add ${section.title.replace('Work ', '')}</span></button>`;
+                    }
+                    if (section.quickSelect) {
+                        contentHTML += `<div class="mt-4"><h4 class="text-sm font-semibold mb-2 text-gray-600">Quick Select:</h4><div id="quick-select-${section.id}" class="flex flex-wrap gap-2"></div></div>`;
+                    }
+
+                    accordionItem.innerHTML = `
+                        <button class="accordion-header w-full flex justify-between items-center p-4 hover:bg-gray-50" data-accordion="${section.id}">
+                            <div class="flex items-center"><i data-lucide="${section.icon}" class="mr-3 text-blue-600 h-5 w-5"></i><h3 class="text-lg font-semibold">${section.title}</h3></div>
+                            <i data-lucide="chevron-down" class="accordion-chevron"></i>
+                        </button>
+                        <div class="accordion-content p-5 bg-gray-50/50 border-t">${contentHTML}</div>`;
+                    editorPanel.appendChild(accordionItem);
+                });
+            }
+
+            // --- LOCAL STORAGE ---
+            function saveToLocal() { localStorage.setItem('resumeDataHTMLPro', JSON.stringify(resumeData)); }
+            function loadFromLocal() {
+                const savedData = localStorage.getItem('resumeDataHTMLPro');
+                if (savedData) {
+                    const parsedData = JSON.parse(savedData);
+                    resumeData = { ...resumeData, ...parsedData };
+                    sections.forEach(section => {
+                        if (section.fields) {
+                            section.fields.forEach(field => {
+                                if (field.type !== 'file' && document.getElementById(field.id) && resumeData[field.id]) {
+                                    document.getElementById(field.id).value = resumeData[field.id];
+                                }
+                            });
+                        }
+                    });
+                    renderAllDynamicSections();
+                    updatePreview();
+                }
+            }
+
+            // --- DYNAMIC SECTION RENDERING ---
+            function renderAllDynamicSections() { sections.filter(s => s.dynamic).forEach(s => renderDynamicSection(s.id)); }
+            function renderDynamicSection(type) {
+                const container = document.getElementById(`${type}-list`);
+                const sectionTemplate = sections.find(s => s.id === type).template;
+                if (!container) return;
+                container.innerHTML = '';
+                (resumeData[type] || []).forEach((item, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'p-4 border bg-white rounded-lg mb-4 relative';
+                    let innerHTML = sectionTemplate.map(field => {
+                        const value = item[field.name] || '';
+                        if (field.type === 'textarea') return `<textarea data-type="${type}" data-index="${index}" name="${field.name}" rows="${field.rows}" placeholder="${field.placeholder}" class="w-full p-2 border rounded">${value}</textarea>`;
+                        if (field.type === 'select') {
+                            const options = field.options.map(opt => `<option value="${opt}" ${value === opt ? 'selected' : ''}>${opt}</option>`).join('');
+                            return `<select data-type="${type}" data-index="${index}" name="${field.name}" class="w-full p-2 border rounded">${options}</select>`;
+                        }
+                        return `<input type="text" data-type="${type}" data-index="${index}" name="${field.name}" value="${value}" placeholder="${field.placeholder}" class="w-full mb-2 p-2 border rounded">`;
+                    }).join('');
+                    div.innerHTML = innerHTML + `<button class="remove-btn absolute top-2 right-2 text-red-500 hover:text-red-700 font-bold text-xl" data-type="${type}" data-index="${index}">&times;</button>`;
+                    container.appendChild(div);
+                });
+            }
+
+            // --- PREVIEW & EXPORT LOGIC ---
+            function generateExportHtml() {
+                const sanitize = (str) => (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const formatText = (text) => sanitize(text).replace(/\n/g, '<br />');
+                
+                const createSectionHTML = (title, items, formatter) => {
+                    if (!items || items.length === 0) return '';
+                    let content = `<h2 style="font-size: 14pt; font-weight: bold; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-top: 12px; margin-bottom: 8px; color: #333;">${title}</h2>`;
+                    content += items.map(formatter).join('');
+                    return content;
+                };
+
+                const experienceHtml = createSectionHTML('Work Experience', resumeData.experience, exp => `<div style="margin-bottom: 12px;"><h3 style="font-size: 11pt; font-weight: bold; margin: 0;">${sanitize(exp.position)}</h3><p style="font-size: 10pt; font-weight: bold; color: #555; margin: 0;">${sanitize(exp.company)}</p><p style="font-size: 9pt; color: #777; margin: 0 0 4px 0;">${sanitize(exp.years)}</p><div style="font-size: 10pt;">${formatText(exp.description)}</div></div>`);
+                const projectsHtml = createSectionHTML('Projects', resumeData.projects, proj => `<div style="margin-bottom: 12px;"><h3 style="font-size: 11pt; font-weight: bold; margin: 0;">${sanitize(proj.name)}</h3><a href="${sanitize(proj.link)}" style="font-size: 9pt; color: #0000EE;">${sanitize(proj.link)}</a><p style="font-size: 10pt; margin-top: 2px;">${formatText(proj.description)}</p></div>`);
+                const educationHtml = createSectionHTML('Education', resumeData.education, edu => `<div style="margin-bottom: 10px;"><h3 style="font-size: 11pt; font-weight: bold; margin: 0;">${sanitize(edu.degree)}</h3><p style="font-size: 10pt; color: #555; margin: 0;">${sanitize(edu.institution)}</p><p style="font-size: 9pt; color: #777; margin: 0;">${sanitize(edu.year)}</p></div>`);
+                const certificationsHtml = createSectionHTML('Certifications', resumeData.certifications, cert => `<div style="margin-bottom: 10px;"><h3 style="font-size: 11pt; font-weight: bold; margin: 0;">${sanitize(cert.name)}</h3><p style="font-size: 10pt; color: #555; margin: 0;">${sanitize(cert.issuer)}</p><p style="font-size: 9pt; color: #777; margin: 0;">${sanitize(cert.date)}</p></div>`);
+                const awardsHtml = createSectionHTML('Awards', resumeData.awards, award => `<div style="margin-bottom: 10px;"><h3 style="font-size: 11pt; font-weight: bold; margin: 0;">${sanitize(award.name)}</h3><p style="font-size: 10pt; color: #555; margin: 0;">${sanitize(award.awarder)} - ${sanitize(award.date)}</p><p style="font-size: 10pt; margin-top: 2px;">${sanitize(award.summary)}</p></div>`);
+                const skillsHtml = resumeData.skills ? `<h2 style="font-size: 14pt; font-weight: bold; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-top: 12px; margin-bottom: 8px;">Skills</h2><p style="font-size: 10pt;">${sanitize(resumeData.skills)}</p>` : '';
+                const languagesHtml = createSectionHTML('Languages', resumeData.languages, lang => `<p style="font-size: 10pt; margin: 2px 0;"><span style="font-weight: bold;">${sanitize(lang.name)}:</span> ${sanitize(lang.proficiency)}</p>`);
+                const summaryHtml = resumeData.summary ? `<h2 style="font-size: 14pt; font-weight: bold; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-top: 12px; margin-bottom: 8px;">Summary</h2><p style="font-size: 10pt;">${formatText(resumeData.summary)}</p>` : '';
+                
+                let templateHtml = '';
+                switch (activeTemplate) {
+                    case 'corporate':
+                    case 'technical':
+                    case 'bold':
+                        templateHtml = `
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <tr>
+                                    <td style="width: 33%; background-color: ${activeTemplate === 'bold' ? '#1f2937; color: white;' : '#f3f4f6;'} padding: 16px; vertical-align: top;">
+                                        ${resumeData.photo ? `<img src="${resumeData.photo}" style="border-radius: 50%; width: 128px; height: 128px; margin: 0 auto 16px; display: block;">` : ''}
+                                        <h1 style="font-size: 18pt; font-weight: bold; text-align: center;">${sanitize(resumeData.name)}</h1>
+                                        <p style="font-size: 12pt; text-align: center; color: #60a5fa; margin-bottom: 24px;">${sanitize(resumeData.title)}</p>
+                                        <h3 style="font-size: 12pt; font-weight: bold; border-bottom: 1px solid #9ca3af; margin-bottom: 8px; padding-bottom: 4px;">Contact</h3>
+                                        <p style="font-size: 10pt; margin: 2px 0;">${sanitize(resumeData.email)}</p>
+                                        <p style="font-size: 10pt; margin: 2px 0;">${sanitize(resumeData.phone)}</p>
+                                        ${[resumeData.website, resumeData.linkedin, resumeData.github].filter(Boolean).map(url => `<a href="${sanitize(url)}" style="font-size: 10pt; color: #60a5fa; display: block; margin: 2px 0;">${sanitize(url.replace('https://',''))}</a>`).join('')}
+                                        ${educationHtml} ${skillsHtml} ${languagesHtml}
+                                    </td>
+                                    <td style="width: 67%; padding: 16px; vertical-align: top;">
+                                        ${summaryHtml} ${experienceHtml} ${projectsHtml} ${certificationsHtml} ${awardsHtml}
+                                    </td>
+                                </tr>
+                            </table>`;
+                        break;
+                    default: // Modern, Creative, Minimalist, Executive, Academic
+                        templateHtml = `
+                            <div style="text-align: center; margin-bottom: 16px;">
+                                ${['creative', 'executive'].includes(activeTemplate) && resumeData.photo ? `<img src="${resumeData.photo}" style="border-radius: 50%; width: 112px; height: 112px; margin: 0 auto 16px; display: block;">` : ''}
+                                <h1 style="font-size: 24pt; font-weight: bold;">${sanitize(resumeData.name)}</h1>
+                                <p style="font-size: 14pt; color: #2563eb;">${sanitize(resumeData.title)}</p>
+                            </div>
+                            <div style="text-align: center; font-size: 10pt; margin-bottom: 16px;">${[resumeData.email, resumeData.phone, resumeData.website, resumeData.linkedin, resumeData.github].filter(Boolean).map(val => `<a href="${val.includes('@') ? 'mailto:'+val : sanitize(val)}" style="margin: 0 8px;">${sanitize(val.replace('https://',''))}</a>`).join(' | ')}</div>
+                            ${summaryHtml} ${experienceHtml} ${projectsHtml} ${certificationsHtml} ${awardsHtml}
+                            <table style="width: 100%;"><tr>
+                                <td style="width: 50%; vertical-align: top; padding-right: 8px;">${educationHtml}</td>
+                                <td style="width: 50%; vertical-align: top; padding-left: 8px;">${skillsHtml}${languagesHtml}</td>
+                            </tr></table>`;
+                        break;
+                }
+                return templateHtml;
+            }
+
+            function updatePreview() {
+                const sanitize = (str) => (str || '').replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                const formatText = (text) => sanitize(text).replace(/\n/g, '<br>');
+                const createSectionHTML = (title, items, formatter) => (!items || items.length === 0) ? '' : `<div class="section mt-6"><h2 class="section-title text-xl font-bold border-b-2 pb-2 mb-4">${title}</h2>${items.map(formatter).join('')}</div>`;
+                
+                const experienceHtml = createSectionHTML('Work Experience', resumeData.experience, exp => `<div class="mb-5"><h3 class="text-lg font-semibold text-gray-800">${sanitize(exp.position)}</h3><p class="font-medium text-gray-600">${sanitize(exp.company)}</p><p class="text-sm text-gray-500 mb-2">${sanitize(exp.years)}</p><div class="text-gray-700 text-sm">${formatText(exp.description)}</div></div>`);
+                const projectsHtml = createSectionHTML('Projects', resumeData.projects, proj => `<div class="mb-5"><h3 class="text-lg font-semibold">${sanitize(proj.name)}</h3><a href="${sanitize(proj.link)}" target="_blank" class="text-sm text-blue-600 hover:underline">${sanitize(proj.link)}</a><p class="text-gray-700 text-sm mt-1">${formatText(proj.description)}</p></div>`);
+                const educationHtml = createSectionHTML('Education', resumeData.education, edu => `<div class="mb-4"><h3 class="text-lg font-semibold">${sanitize(edu.degree)}</h3><p class="text-gray-600">${sanitize(edu.institution)}</p><p class="text-sm text-gray-500">${sanitize(edu.year)}</p></div>`);
+                const certificationsHtml = createSectionHTML('Certifications', resumeData.certifications, cert => `<div class="mb-4"><h3 class="text-lg font-semibold">${sanitize(cert.name)}</h3><p class="text-gray-600">${sanitize(cert.issuer)}</p><p class="text-sm text-gray-500">${sanitize(cert.date)}</p></div>`);
+                const awardsHtml = createSectionHTML('Awards', resumeData.awards, award => `<div class="mb-4"><h3 class="text-lg font-semibold">${sanitize(award.name)}</h3><p class="text-gray-600">${sanitize(award.awarder)} - ${sanitize(award.date)}</p><p class="text-sm text-gray-700">${sanitize(award.summary)}</p></div>`);
+                const skillsHtml = resumeData.skills ? `<div class="section mt-6"><h2 class="section-title text-xl font-bold border-b-2 pb-2 mb-4">Skills</h2><ul class="flex flex-wrap gap-2 list-none p-0">${resumeData.skills.split(',').map(s => s.trim()).filter(Boolean).map(skill => `<li class="bg-blue-100 text-blue-800 text-sm font-medium px-3 py-1 rounded-full">${sanitize(skill)}</li>`).join('')}</ul></div>` : '';
+                const languagesHtml = createSectionHTML('Languages', resumeData.languages, lang => `<p class="text-gray-700"><span class="font-semibold">${sanitize(lang.name)}:</span> ${sanitize(lang.proficiency)}</p>`);
+                const summaryHtml = resumeData.summary ? `<div class="section"><h2 class="section-title text-xl font-bold border-b-2 pb-2 mb-4">Summary</h2><p class="text-gray-700 text-sm">${formatText(resumeData.summary)}</p></div>` : '';
+
+                let templateHtml = '';
+                switch (activeTemplate) {
+                    case 'corporate': case 'technical': case 'bold':
+                        let finalEducationHtml = educationHtml, finalSkillsHtml = skillsHtml, finalLanguagesHtml = languagesHtml;
+                        if (activeTemplate === 'bold') {
+                            finalEducationHtml = createSectionHTML('Education', resumeData.education, edu => `<div class="mb-4"><h3 class="text-lg font-semibold text-white">${sanitize(edu.degree)}</h3><p class="text-gray-300">${sanitize(edu.institution)}</p><p class="text-sm text-gray-400">${sanitize(edu.year)}</p></div>`);
+                            finalSkillsHtml = resumeData.skills ? `<div class="section mt-6"><h2 class="section-title text-xl font-bold border-b pb-2 mb-4">Skills</h2><ul class="flex flex-wrap gap-2 list-none p-0">${resumeData.skills.split(',').map(s => s.trim()).filter(Boolean).map(skill => `<li class="bg-gray-700 text-white text-sm font-medium px-3 py-1 rounded-full">${sanitize(skill)}</li>`).join('')}</ul></div>` : '';
+                            finalLanguagesHtml = createSectionHTML('Languages', resumeData.languages, lang => `<p class="text-gray-300"><span class="font-semibold text-white">${sanitize(lang.name)}:</span> ${sanitize(lang.proficiency)}</p>`);
+                        }
+                        templateHtml = `<div class="grid grid-cols-3 gap-8"><div class="col-span-1 ${activeTemplate === 'bold' ? 'bg-gray-800 text-white' : 'bg-gray-100'} p-6 rounded-lg">${resumeData.photo ? `<img src="${resumeData.photo}" class="rounded-full w-32 h-32 mx-auto mb-4 object-cover">` : ''}<h1 class="text-2xl font-bold text-center ${activeTemplate === 'bold' ? 'text-white' : 'text-gray-800'}">${sanitize(resumeData.name)}</h1><p class="text-center text-blue-400 mb-6">${sanitize(resumeData.title)}</p><div class="contact-info text-sm"><h3 class="font-bold text-lg border-b mb-2 pb-1">Contact</h3><p>${sanitize(resumeData.email)}</p><p>${sanitize(resumeData.phone)}</p>${[resumeData.website, resumeData.linkedin, resumeData.github].filter(Boolean).map(url => `<a href="${sanitize(url)}" class="text-blue-400 block break-words">${url.replace('https://','')}</a>`).join('')}</div>${finalEducationHtml} ${finalSkillsHtml} ${finalLanguagesHtml}</div><div class="col-span-2 p-6">${summaryHtml} ${experienceHtml} ${projectsHtml} ${certificationsHtml} ${awardsHtml}</div></div>`;
+                        break;
+                    case 'creative':
+                        templateHtml = `<header class="text-center p-6 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-t-lg">${resumeData.photo ? `<img src="${resumeData.photo}" class="rounded-full w-28 h-28 mx-auto mb-4 object-cover border-4 border-white">` : ''}<h1 class="text-4xl font-bold">${sanitize(resumeData.name)}</h1><p class="text-xl">${sanitize(resumeData.title)}</p></header><div class="p-6"><div class="text-center text-sm mb-6">${[resumeData.email, resumeData.phone, resumeData.website, resumeData.linkedin, resumeData.github].filter(Boolean).map(val => `<a href="${val.includes('@') ? 'mailto:'+val : sanitize(val)}" class="mx-2 hover:underline">${sanitize(val.replace('https://',''))}</a>`).join(' | ')}</div>${summaryHtml} ${experienceHtml} ${projectsHtml} ${educationHtml} ${certificationsHtml} ${awardsHtml} ${skillsHtml} ${languagesHtml}</div>`;
+                        break;
+                    case 'minimalist': case 'academic':
+                        templateHtml = `<div class="p-4"><header class="text-left pb-4 mb-4 border-b-2"><h1 class="text-4xl font-bold">${sanitize(resumeData.name)}</h1><p class="text-lg text-gray-600">${sanitize(resumeData.title)}</p></header><div class="text-left text-sm mb-6">${[resumeData.email, resumeData.phone, resumeData.website, resumeData.linkedin, resumeData.github].filter(Boolean).map(val => `<a href="${val.includes('@') ? 'mailto:'+val : sanitize(val)}" class="mr-4 hover:underline">${sanitize(val.replace('https://',''))}</a>`).join('')}</div>${summaryHtml} ${experienceHtml} ${projectsHtml} ${educationHtml} ${certificationsHtml} ${awardsHtml} ${skillsHtml} ${languagesHtml}</div>`;
+                        break;
+                    case 'executive':
+                         templateHtml = `<div class="p-4 border-l-4 border-gray-800"><header class="text-left pb-4 mb-4"><h1 class="text-5xl font-bold tracking-wider">${sanitize(resumeData.name).toUpperCase()}</h1><p class="text-xl text-gray-500 tracking-widest">${sanitize(resumeData.title).toUpperCase()}</p></header><div class="text-left text-sm mb-6 border-t pt-4">${[resumeData.email, resumeData.phone, resumeData.website, resumeData.linkedin, resumeData.github].filter(Boolean).map(val => `<a href="${val.includes('@') ? 'mailto:'+val : sanitize(val)}" class="mr-4 hover:underline">${sanitize(val.replace('https://',''))}</a>`).join('')}</div>${summaryHtml} ${experienceHtml} ${projectsHtml} ${educationHtml} ${certificationsHtml} ${awardsHtml} ${skillsHtml} ${languagesHtml}</div>`;
+                        break;
+                    default: // Modern
+                        templateHtml = `<div class="text-center mb-8"><h1 class="text-5xl font-extrabold text-slate-900">${sanitize(resumeData.name)}</h1><p class="text-xl text-blue-700 font-light">${sanitize(resumeData.title)}</p></div><div class="text-center text-sm mb-6">${[resumeData.email, resumeData.phone, resumeData.website, resumeData.linkedin, resumeData.github].filter(Boolean).map(val => `<a href="${val.includes('@') ? 'mailto:'+val : sanitize(val)}" class="mx-2 hover:underline">${sanitize(val.replace('https://',''))}</a>`).join(' | ')}</div>${summaryHtml}${experienceHtml}${projectsHtml}<div class="grid grid-cols-1 md:grid-cols-2 gap-8">${educationHtml}${certificationsHtml}${awardsHtml}${skillsHtml}${languagesHtml}</div>`;
+                        break;
+                }
+                previewPanel.innerHTML = templateHtml.replace(/section-title text-xl font-bold border-b-2 pb-2 mb-4/g, 'text-xl font-bold border-b-2 pb-2 mb-4');
+            }
+
+            // --- EVENT LISTENERS ---
+            editorPanel.addEventListener('input', (e) => {
+                const target = e.target;
+                const { id, value, name, dataset, type } = target;
+                if (type === 'file' && id === 'photo') {
+                    if (target.files && target.files[0]) {
+                        const reader = new FileReader();
+                        reader.onload = (event) => {
+                            cropperModal.classList.add('flex');
+                            imageToCrop.src = event.target.result;
+                            if (cropper) cropper.destroy();
+                            cropper = new Cropper(imageToCrop, { aspectRatio: 1, viewMode: 1 });
+                        };
+                        reader.readAsDataURL(target.files[0]);
+                    }
+                } else if (id && resumeData.hasOwnProperty(id)) {
+                    resumeData[id] = value;
+                } else if (name && dataset.index != null && resumeData[dataset.type]) {
+                    resumeData[dataset.type][dataset.index][name] = value;
+                }
+                saveToLocal();
+                updatePreview();
+            });
+            
+            editorPanel.addEventListener('click', (e) => {
+                const target = e.target.closest('button');
+                if (!target) return;
+
+                if (target.classList.contains('accordion-header')) {
+                    const accordionName = target.dataset.accordion;
+                    openAccordion = (openAccordion === accordionName) ? null : accordionName;
+                    document.querySelectorAll('.accordion-item').forEach(item => {
+                        const name = item.querySelector('.accordion-header').dataset.accordion;
+                        item.querySelector('.accordion-content').classList.toggle('open', name === openAccordion);
+                        item.querySelector('.accordion-chevron').classList.toggle('rotate-180', name === openAccordion);
+                    });
+                    return;
+                }
+
+                const section = sections.find(s => `add-${s.id}-btn` === target.id);
+                if (section) {
+                    resumeData[section.id].push(section.id === 'languages' ? { proficiency: 'Fluent' } : {});
+                    renderDynamicSection(section.id);
+                } else if (target.classList.contains('remove-btn')) {
+                    const { type, index } = target.dataset;
+                    resumeData[type].splice(index, 1);
+                    renderDynamicSection(type);
+                } else {
+                    return;
+                }
+                saveToLocal();
+                updatePreview();
+            });
+
+            document.querySelector('.template-switcher').addEventListener('click', (e) => {
+                const target = e.target.closest('.template-btn');
+                if (target) {
+                    activeTemplate = target.dataset.template;
+                    document.querySelectorAll('.template-btn').forEach(btn => btn.classList.remove('bg-blue-600', 'text-white', 'shadow'));
+                    target.classList.add('bg-blue-600', 'text-white', 'shadow');
+                    updatePreview();
+                }
+            });
+            
+            // --- CROPPER & EXPORT LISTENERS ---
+            document.getElementById('crop-btn').addEventListener('click', () => {
+                resumeData.photo = cropper.getCroppedCanvas({ width: 256, height: 256 }).toDataURL('image/jpeg');
+                cropper.destroy();
+                cropperModal.classList.remove('flex');
+                saveToLocal();
+                updatePreview();
+            });
+            document.getElementById('cancel-crop-btn').addEventListener('click', () => {
+                cropper.destroy();
+                cropperModal.classList.remove('flex');
+            });
+
+            document.getElementById('export-word-btn').addEventListener('click', () => {
+                const content = generateExportHtml();
+                const blob = htmlDocx.asBlob(content, {
+                    orientation: 'portrait',
+                    margins: { top: 720, right: 720, bottom: 720, left: 720 } // 1 inch margins
+                });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `Resume - ${resumeData.name || 'Candidate'}.docx`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            });
+
+            // --- QUICK SELECT ---
+            function populateQuickSelect(sectionId, items, onSelect) {
+                const container = document.getElementById(`quick-select-${sectionId}`);
+                if (!container) return;
+                items.forEach(item => {
+                    const button = document.createElement('button');
+                    button.className = 'quick-select-btn px-2 py-1 bg-gray-200 text-gray-700 text-xs rounded hover:bg-gray-300';
+                    button.textContent = item;
+                    button.onclick = () => onSelect(item);
+                    container.appendChild(button);
+                });
+            }
+
+            // --- INITIALIZATION ---
+            buildEditor();
+            lucide.createIcons();
+            loadFromLocal();
+            sections.forEach(section => {
+                if (section.quickSelect) {
+                    const onSelect = section.id === 'skills'
+                        ? (skill) => {
+                            const skillsInput = document.getElementById('skills');
+                            const skillsSet = new Set(skillsInput.value.split(',').map(s => s.trim()).filter(Boolean));
+                            skillsSet.add(skill);
+                            skillsInput.value = Array.from(skillsSet).join(', ');
+                            skillsInput.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                        : (lang) => {
+                            if (!resumeData.languages.some(l => l.name.toLowerCase() === lang.toLowerCase())) {
+                                resumeData.languages.push({ name: lang, proficiency: 'Fluent' });
+                                renderDynamicSection('languages');
+                                saveToLocal();
+                                updatePreview();
+                            }
+                        };
+                    populateQuickSelect(section.id, section.quickSelect, onSelect);
+                }
+            });
+            document.querySelector(`.template-btn[data-template="${activeTemplate}"]`).click();
+            document.querySelector(`.accordion-header[data-accordion="${openAccordion}"]`)?.click();
+        });
+    </script>
+</body>
+</html>
